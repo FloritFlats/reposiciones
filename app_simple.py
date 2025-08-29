@@ -1,83 +1,87 @@
-
 import streamlit as st
 import pandas as pd
-from datetime import datetime
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
+import datetime
 
-# URL del Google Sheet compartido públicamente en CSV
-URL_CSV = "https://docs.google.com/spreadsheets/d/1i0iM2S6xrd9hbfZ0lGnU6UHV813cFPgY2CCnr1vbrcc/export?format=csv"
+st.set_page_config(page_title="Informe desde Google Drive", page_icon=":clipboard:", layout="wide")
+st.title("📋 Informe desde Google Drive (sin claves)")
 
-# Cargar datos desde Google Sheets
-@st.cache_data
-def cargar_datos():
-    df = pd.read_csv(URL_CSV)
-    return df
+# Cargar Google Sheet
+sheet_url = "https://docs.google.com/spreadsheets/d/1i0iM2S6xrd9hbfZ0lGnU6UHV813cFPgY2CCnr1vbrcc/export?format=csv"
+df = pd.read_csv(sheet_url)
 
-# Cargar café por propiedad
-@st.cache_data
-def cargar_cafe():
-    return pd.read_excel("Cafe por propiedad.xlsx")
+# Limpiar nombres de columnas
+df.columns = df.columns.str.strip()
 
-# Crear PDF con el informe
-def generar_pdf(df_filtrado, fecha):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    styles = getSampleStyleSheet()
-    story = [Paragraph(f"Informe Diario - {fecha}", styles["Title"]), Spacer(1, 12)]
+# Selección de columnas relevantes
+columnas_relevantes = [
+    "Marca temporal", "Apartamento", "Incidencias a realizar", "Inventario ropa e consumibles",
+    "Faltantes por entrada", "Faltantes reposiciones café", "Reposiciones sal", "Reposiciones té/infusión",
+    "Reposiciones detergente de ropa", "Reposiciones insecticida", "Reposiciones gel de ducha",
+    "Reposiciones champú", "Reposiciones jabón de manos", "Reposiciones escoba",
+    "Reposiciones lavavajillas", "Reposiciones vinagre", "Reposiciones pastilla de descalcificado",
+    "Reposiciones kit de cocina", "Reposiciones papel higiénico", "Reposiciones botella de agua",
+    "Otras reposiciones", "Detergente finalizado", "Jabón de manos finalizado",
+    "Sal de lavavajillas finalizado", "Vinagre finalizado", "Abrillantador finalizado"
+]
 
-    columnas = df_filtrado.columns.tolist()
-    data = [columnas] + df_filtrado.values.tolist()
+df = df[[col for col in columnas_relevantes if col in df.columns]]
+df = df.rename(columns={"Marca temporal": "Fecha"})
 
-    tabla = Table(data, repeatRows=1)
-    tabla.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
-        ("GRID", (0, 0), (-1, -1), 0.5, colors.black),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-    ]))
+# Convertir fechas
+df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
 
-    story.append(tabla)
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
+# Filtro por día
+fecha_seleccionada = st.date_input("Selecciona una fecha", value=datetime.date.today())
+df_filtrado = df[df["Fecha"].dt.date == fecha_seleccionada]
 
-# --- App principal ---
-st.set_page_config(page_title="Informe Diario de Reposiciones", layout="wide")
-st.title("📋 Informe Diario de Reposiciones e Incidencias")
+# Cargar tipo de café por apartamento
+try:
+    df_cafe = pd.read_excel("Cafe por propiedad.xlsx")
+    df_cafe.columns = df_cafe.columns.str.strip()
+    if "Apartamento" in df.columns and "Apartamento" in df_cafe.columns:
+        df = df.merge(df_cafe, how="left", on="Apartamento")
+        df_filtrado = df[df["Fecha"].dt.date == fecha_seleccionada]
+    else:
+        st.warning("⚠️ No se pudo asociar el tipo de café. Revisa las columnas en el Excel.")
+except Exception as e:
+    st.warning(f"No se pudo cargar el archivo de café: {e}")
 
-df = cargar_datos()
-df_cafe = cargar_cafe()
+# Mostrar datos filtrados
+st.subheader("Filas completadas")
+df_completadas = df_filtrado.dropna(subset=["Inventario ropa e consumibles", "Apartamento"], how="all")
+st.dataframe(df_completadas)
 
-# Unir tipo de café
-df = df.merge(df_cafe, how="left", on="Apartamento")
-df["Marca temporal"] = pd.to_datetime(df["Marca temporal"], errors="coerce")
-df["Fecha"] = df["Marca temporal"].dt.date
-df["Hora"] = df["Marca temporal"].dt.strftime("%H:%M")
+# Generar PDF si hay datos
+if not df_completadas.empty:
+    def generar_pdf(dataframe):
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        elements = []
+        styles = getSampleStyleSheet()
+        elements.append(Paragraph(f"Informe de limpieza - {fecha_seleccionada}", styles["Title"]))
+        elements.append(Spacer(1, 12))
 
-# Filtro por fecha
-fechas_disponibles = sorted(df["Fecha"].dropna().unique())
-fecha_seleccionada = st.sidebar.selectbox("Selecciona una fecha", fechas_disponibles)
+        table_data = [list(dataframe.columns)] + dataframe.astype(str).values.tolist()
+        table = Table(table_data, repeatRows=1)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.grey),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+            ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0,0), (-1,0), 12),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.black)
+        ]))
+        elements.append(table)
+        doc.build(elements)
+        buffer.seek(0)
+        return buffer
 
-df_filtrado = df[df["Fecha"] == fecha_seleccionada]
-
-# Filtro por filas completadas (al menos una columna de contenido)
-columnas_relevantes = df.columns[2:-3]  # Excluye marca temporal, apartamento y café
-df_filtrado = df_filtrado[df_filtrado[columnas_relevantes].notna().any(axis=1)]
-
-st.subheader(f"🧼 Limpiezas realizadas el {fecha_seleccionada}")
-st.dataframe(df_filtrado, use_container_width=True)
-
-# Botón de descarga en PDF
-if not df_filtrado.empty:
-    pdf = generar_pdf(df_filtrado, fecha_seleccionada)
-    st.download_button(
-        label="📥 Descargar informe en PDF",
-        data=pdf,
-        file_name=f"informe_{fecha_seleccionada}.pdf",
-        mime="application/pdf"
-    )
+    pdf_buffer = generar_pdf(df_completadas)
+    st.download_button("📄 Descargar informe en PDF", data=pdf_buffer, file_name=f"informe_{fecha_seleccionada}.pdf")
 else:
-    st.info("No hay limpiezas completadas para esta fecha.")
+    st.info("No hay filas completadas para esta fecha.")
