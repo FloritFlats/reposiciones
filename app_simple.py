@@ -1,114 +1,72 @@
-
-import streamlit as st
 import pandas as pd
-import datetime
+import streamlit as st
+from datetime import datetime
 from io import BytesIO
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
 
-# --- CONFIGURACIÓN DE LA PÁGINA ---
-st.set_page_config(page_title="Informe desde Google Drive (sin claves)", layout="wide")
+# --- Cargar archivo desde Google Drive ---
+GOOGLE_DRIVE_URL = "https://drive.google.com/uc?id=1i0iM2S6xrd9hbfZ0lGnU6UHV813cFPgY2CCnr1vbrcc"
+
+@st.cache_data
+def cargar_datos():
+    try:
+        df = pd.read_excel(GOOGLE_DRIVE_URL)
+        return df
+    except Exception as e:
+        st.error(f"No se pudo cargar el archivo: {e}")
+        return None
+
+# --- UI ---
 st.title("📋 Informe desde Google Drive (sin claves)")
 
-# --- ENLACES DE GOOGLE SHEETS ---
-url_datos = "https://docs.google.com/spreadsheets/d/1i0iM2S6xrd9hbfZ0lGnU6UHV813cFPgY2CCnr1vbrcc/export?format=xlsx"
-url_cafe = "https://floritflats.github.io/reposiciones/data/Cafe%20por%20propiedad.xlsx"
+fecha_filtrada = st.date_input("Selecciona una fecha")
 
-# --- CARGA DE DATOS ---
-@st.cache_data
-def cargar_datos(url):
-    return pd.read_excel(url)
+df = cargar_datos()
+if df is not None:
+    df.columns = df.columns.str.strip()
+    columnas_interes = [
+        "Marca temporal", "Apartamento", "Incidencias a realizar", "Inventario ropa e consumibles",
+        "Faltantes por entrada", "Faltantes reposiciones café", "Reposiciones sal",
+        "Reposiciones té/infusión", "Reposiciones detergente de ropa", "Reposiciones insecticida",
+        "Reposiciones gel de ducha", "Reposiciones champú", "Reposiciones jabón de manos",
+        "Reposiciones escoba", "Reposiciones lavavajillas", "Reposiciones vinagre",
+        "Reposiciones pastilla de descalcificado", "Reposiciones kit de cocina",
+        "Reposiciones papel higiénico", "Reposiciones botella de agua", "Otras reposiciones",
+        "Detergente finalizado", "Jabón de manos finalizado", "Sal de lavavajillas finalizado",
+        "Vinagre finalizado", "Abrillantador finalizado"
+    ]
 
-try:
-    df = cargar_datos(url_datos)
-    df_cafe = cargar_datos(url_cafe)
-except Exception as e:
-    st.error(f"No se pudo cargar el archivo: {e}")
+    df = df[columnas_interes]
+    df["Marca temporal"] = pd.to_datetime(df["Marca temporal"], errors='coerce')
+    df_filtrado = df[df["Marca temporal"].dt.date == fecha_filtrada]
+
+    if not df_filtrado.empty:
+        st.subheader("Filas completadas")
+        df_completadas = df_filtrado.dropna(subset=["Inventario ropa e consumibles", "Apartamento"], how="all")
+        st.dataframe(df_completadas)
+
+        # Generar informe PDF
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4)
+        styles = getSampleStyleSheet()
+        elements = []
+
+        for _, fila in df_completadas.iterrows():
+            elements.append(Paragraph(f"<b>Apartamento:</b> {fila['Apartamento']}", styles['Normal']))
+            elements.append(Paragraph(f"<b>Fecha:</b> {fila['Marca temporal'].strftime('%d/%m/%Y %H:%M')}", styles['Normal']))
+            for col in columnas_interes[2:]:
+                valor = fila.get(col)
+                if pd.notna(valor):
+                    elements.append(Paragraph(f"<b>{col}:</b> {valor}", styles['Normal']))
+            elements.append(Spacer(1, 12))
+
+        doc.build(elements)
+        buffer.seek(0)
+        st.download_button("📄 Descargar informe PDF", data=buffer, file_name="informe_reposiciones.pdf", mime="application/pdf")
+    else:
+        st.warning("No hay datos para la fecha seleccionada.")
+else:
     st.stop()
-
-# --- RENOMBRADO DE COLUMNAS CLAVE ---
-df = df.rename(columns=lambda x: x.strip())
-
-# --- UNIFICAR FORMATO DE NOMBRE DE COLUMNAS ---
-columnas_deseadas = {
-    "Marca temporal": "Marca temporal",
-    "Apartamento": "Apartamento",
-    "Inventario ropa e consumables": "Inventario ropa e consumables",
-    "Faltantes por entrada": "Faltantes por entrada",
-    "Faltantes reposiciones café": "Faltantes reposiciones café",
-    "Reposiciones sal": "Reposiciones sal",
-    "Reposiciones té/infusión": "Reposiciones té/infusión",
-    "Reposiciones detergente de ropa": "Reposiciones detergente de ropa",
-    "Reposiciones insecticida": "Reposiciones insecticida",
-    "Reposiciones gel de ducha": "Reposiciones gel de ducha",
-    "Reposiciones champú": "Reposiciones champú",
-    "Reposiciones jabón de manos": "Reposiciones jabón de manos",
-    "Reposiciones escoba": "Reposiciones escoba",
-    "Reposiciones lavavajillas": "Reposiciones lavavajillas",
-    "Reposiciones vinagre": "Reposiciones vinagre",
-    "Reposiciones pastilla de descalcificado": "Reposiciones pastilla de descalcificado",
-    "Reposiciones kit de cocina": "Reposiciones kit de cocina",
-    "Reposiciones papel higiénico": "Reposiciones papel higiénico",
-    "Reposiciones botella de agua": "Reposiciones botella de agua",
-    "Otras reposiciones": "Otras reposiciones",
-    "Detergente finalizado": "Detergente finalizado",
-    "Jabón de manos finalizado": "Jabón de manos finalizado",
-    "Sal de lavavajillas finalizado": "Sal de lavavajillas finalizado",
-    "Vinagre finalizado": "Vinagre finalizado",
-    "Abrillantador finalizado": "Abrillantador finalizado",
-    "Incidencias a realizar": "Incidencias a realizar"
-}
-
-df = df.rename(columns=columnas_deseadas)
-columnas_existentes = [col for col in columnas_deseadas.values() if col in df.columns]
-df = df[columnas_existentes + ["Marca temporal", "Apartamento"]]
-
-# --- FORMATO DE FECHA ---
-df["Marca temporal"] = pd.to_datetime(df["Marca temporal"], errors="coerce")
-
-# --- ASOCIAR TIPO DE CAFÉ ---
-try:
-    df_cafe = df_cafe.rename(columns=lambda x: x.strip())
-    df = df.merge(df_cafe, how="left", on="Apartamento")
-except Exception as e:
-    st.warning("⚠️ No se pudo asociar el tipo de café. Revisa las columnas en el Excel.")
-
-# --- FILTRADO POR FECHA ---
-fecha_unica = st.date_input("Selecciona una fecha", value=datetime.date.today())
-df_filtrado = df[df["Marca temporal"].dt.date == fecha_unica]
-
-# --- MOSTRAR FILAS COMPLETADAS ---
-st.subheader("Filas completadas")
-try:
-    df_completadas = df_filtrado.dropna(subset=["Inventario ropa e consumables", "Apartamento"], how="all")
-    st.dataframe(df_completadas, use_container_width=True)
-except Exception as e:
-    st.error(f"Ocurrió un error: {e}")
-
-# --- DESCARGA EN PDF ---
-def exportar_pdf(dataframe):
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
-    elements = []
-    styles = getSampleStyleSheet()
-    elements.append(Paragraph("Informe de reposiciones", styles["Heading1"]))
-    elements.append(Spacer(1, 12))
-
-    data = [list(dataframe.columns)] + dataframe.astype(str).values.tolist()
-    table = Table(data)
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
-        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
-    ]))
-    elements.append(table)
-    doc.build(elements)
-    buffer.seek(0)
-    return buffer
-
-if not df_filtrado.empty:
-    pdf_buffer = exportar_pdf(df_filtrado)
-    st.download_button("📄 Descargar informe en PDF", data=pdf_buffer, file_name="informe_reposiciones.pdf", mime="application/pdf")
