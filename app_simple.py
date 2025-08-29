@@ -6,7 +6,7 @@ st.title("📋 Informe desde Google Drive (sin claves)")
 
 # ID del archivo público en Google Drive
 file_id = "1i0iM2S6xrd9hbfZ0lGnU6UHV813cFPgY2CCnr1vbrcc"  # <-- tu archivo
-url = f"https://docs.google.com/spreadsheets/d/{file_id}/export?format=xlsx"
+url = f"https://docs.google.com/spreadsheets/d/1i0iM2S6xrd9hbfZ0lGnU6UHV813cFPgY2CCnr1vbrcc/edit?gid=1040407590#gid=1040407590"
 
 try:
     df = pd.read_excel(url)
