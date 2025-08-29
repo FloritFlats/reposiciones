@@ -2,3 +2,8 @@ streamlit==1.36.0
 pandas==2.2.2
 gspread==6.2.0
 google-auth==2.40.0
+numpy>=1.26
+openpyxl>=3.1
+altair>=5.0
+pyarrow>=15.0
+XlsxWriter>=3.1
