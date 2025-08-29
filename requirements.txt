@@ -1,6 +1,5 @@
-streamlit
-pandas
-gspread
-oauth2client
-openpyxl
-reportlab
+streamlit==1.29.0
+gspread==6.2.0
+oauth2client==4.1.3
+reportlab==4.0.7
+pandas==2.2.2
