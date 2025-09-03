@@ -33,7 +33,8 @@ import streamlit as st
 st.set_page_config(page_title="Compras Odoo + Mín/Máx", layout="wide")
 
 # Archivo de Mín/Máx por defecto
-DEFAULT_MINMAX_PATH = "EXCEL FINAL INVENTARIOS.xlsx"
+from pathlib import Path
+DEFAULT_MINMAX_PATH = Path(__file__).parent / "EXCEL FINAL INVENTARIOS.xlsx"  # Debe existir en el mismo directorio que app.py
 
 # -------------------------------------------
 # Utilidades
@@ -55,8 +56,16 @@ def _norm_key(x):
 # Lectura Mín/Máx
 # -------------------------------------------
 
-def parse_minmax(path: str) -> pd.DataFrame:
-    xls = pd.ExcelFile(path)
+def parse_minmax(path: str | Path) -> pd.DataFrame:
+    # Intento de lectura con openpyxl (recomendado). Si falta, mostramos instrucción clara.
+    try:
+        xls = pd.ExcelFile(path, engine="openpyxl")
+    except ImportError as ie:
+        st.error("Falta el paquete **openpyxl**. Añade `openpyxl` a tu `requirements.txt` y vuelve a desplegar.")
+        raise
+    except FileNotFoundError:
+        st.error(f"No se encontró el archivo de Mín/Máx en: {path}. Asegúrate de que **EXCEL FINAL INVENTARIOS.xlsx** esté en el mismo directorio que `app.py`.")
+        raise
     sheet = xls.sheet_names[0]
     df = pd.read_excel(path, sheet_name=sheet)
     df = df.rename(columns={c: str(c).strip() for c in df.columns})
@@ -152,6 +161,8 @@ with st.expander("Cómo funciona", expanded=False):
 
 odoo_file = st.file_uploader("Extracto de Odoo (Ubicación, Producto, Cantidad)", type=["xlsx","xls","csv"]) 
 
+st.caption("Dependencias requeridas: streamlit, pandas, numpy, openpyxl, xlsxwriter (añádelas a requirements.txt)") 
+
 mm_agg = parse_minmax(DEFAULT_MINMAX_PATH)
 
 if odoo_file is not None:
@@ -184,4 +195,3 @@ if odoo_file is not None:
         st.error(f"Error leyendo Odoo: {e}")
 else:
     st.info("Sube el extracto de Odoo para calcular las cantidades a comprar hasta el Máximo.")
-
