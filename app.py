@@ -229,7 +229,7 @@ if stock is not None:
     st.pyplot(fig2)
 
     # ========== Resumen por proveedor (a partir de maestro: col G=Producto, col K=Proveedor) ==========
-    st.markdown("### 🧾 Resumen de compra por proveedor (con coste)
+    st.markdown("### 🧾 Resumen de compra por proveedor (con coste)")
     # Construimos el maestro a partir del CSV embebido
     prov_cost_df = pd.read_csv(io.StringIO(PROV_COST_CSV))
     prov_cost_df["ProductoN"] = prov_cost_df["Producto"].map(_norm_text)
