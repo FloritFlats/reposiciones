@@ -27,6 +27,29 @@ import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 
+# === MAPEADO EMBEBIDO Producto → Proveedor + Coste (desde Odoo) ===
+# Coste asumido por unidad. Si algún producto no aparece, se asigna SIN PROVEEDOR y coste 0.
+PROV_COST_CSV = """Producto,Proveedor,Coste
+Abrillantador,"MERCADONA, S.A.",1.2
+Azúcar Caja / 50 sobres,"MERCADONA, S.A.",1.55
+Café Natural Molido 250gr,"MERCADONA, S.A.",2.75
+Capsula Colombia Nespreso,"MERCADONA, S.A.",0.19
+Capsula Tassimo,"MERCADONA, S.A.",0.33
+Capsulas Dolce Gusto,"MERCADONA, S.A.",0.13
+Detergente 66lvd,"MERCADONA, S.A.",2.5
+Escoba,"MERCADONA, S.A.",1.7
+Gel Baño Manos,"MERCADONA, S.A.",1.05
+Gel Rituals 300ml,"LANDE, S.A,",4.81
+Infusión,"MERCADONA, S.A.",1.2
+Insecticida,"MERCADONA, S.A.",2.7
+Kit Limpieza,KLEANING HYGIENE SOLUTIONS S.L,1.0
+Mocho,SIN PROVEEDOR,1.5
+Sal Lavavajillas,"MERCADONA, S.A.",0.95
+Sal Tarro Pequeño,"MERCADONA, S.A.",0.75
+Shampoo Rituals 300ml,"LANDE, S.A,",4.81
+Vinagre Limpieza,"MERCADONA, S.A.",0.9
+"""
+
 st.set_page_config(page_title="Compras Odoo + Mín/Máx", layout="wide")
 
 DEFAULT_MINMAX_PATH = Path(__file__).parent / "EXCEL FINAL INVENTARIOS.xlsx"
@@ -205,18 +228,47 @@ if stock is not None:
     ax2.legend()
     st.pyplot(fig2)
 
-    # === Productos por debajo del Min ===
-    bajos = unidades.loc[unidades["Stock"] < unidades["Min"], ["Producto", "Stock", "Min"]].copy()
-    if not bajos.empty:
-        bajos["Déficit_hasta_Min"] = (bajos["Min"] - bajos["Stock"]).clip(lower=0).astype(int)
-        bajos = bajos.sort_values("Déficit_hasta_Min", ascending=False).reset_index(drop=True)
-        st.warning("⚠️ Productos por debajo del punto de pedido (Min):")
-        st.dataframe(bajos, use_container_width=True)
-        st.download_button(
-            label="⬇️ Excel – Productos por debajo de Min",
-            data=to_excel_bytes(bajos, "PorDebajoMin"),
-            file_name="Productos_por_debajo_de_Min.xlsx",
-        )
+    # ========== Resumen por proveedor (a partir de maestro: col G=Producto, col K=Proveedor) ==========
+    st.markdown("### 🧾 Resumen de compra por proveedor (con coste)
+    # Construimos el maestro a partir del CSV embebido
+    prov_cost_df = pd.read_csv(io.StringIO(PROV_COST_CSV))
+    prov_cost_df["ProductoN"] = prov_cost_df["Producto"].map(_norm_text)
+    prov_cost_df["K_Producto"] = prov_cost_df["ProductoN"].map(_norm_key)
+    prov_cost_df["Proveedor"] = prov_cost_df["Proveedor"].fillna("SIN PROVEEDOR")
+    prov_cost_df["Coste"] = pd.to_numeric(prov_cost_df["Coste"], errors="coerce").fillna(0)
+
+    rp = resumen_pos.copy()
+    rp["K_Producto"] = rp["Producto"].map(_norm_key)
+    rp = rp.merge(prov_cost_df[["K_Producto", "Proveedor", "Coste"]], on="K_Producto", how="left")
+    rp["Proveedor"] = rp["Proveedor"].fillna("SIN PROVEEDOR")
+    rp["Coste_unitario"] = rp["Coste"].fillna(0)
+    rp["Coste_total"] = (rp["Total_a_comprar"] * rp["Coste_unitario"]).round(2)
+
+    prov_tot = (rp.groupby("Proveedor", as_index=False)
+                  .agg(Unidades_total=("Total_a_comprar", "sum"),
+                       SKUs=("Producto", "nunique"),
+                       Coste_total=("Coste_total", "sum"))
+                  .sort_values("Coste_total", ascending=False))
+
+    st.dataframe(prov_tot, use_container_width=True)
+
+    # KPI de coste total estimado
+    total_cost = float(prov_tot["Coste_total"].sum())
+    st.metric("Coste total aproximado", f"{total_cost:,.2f} €")
+
+    # Descargas por proveedor
+    st.download_button(
+        label="⬇️ Excel – Resumen por proveedor (con coste)",
+        data=to_excel_bytes(prov_tot, "ResumenPorProveedor"),
+        file_name="Compra_Resumen_Por_Proveedor.xlsx",
+    )
+    st.download_button(
+        label="⬇️ Excel – Detalle por proveedor (con coste)",
+        data=to_excel_bytes(rp[["Proveedor", "Producto", "Total_a_comprar", "Coste_unitario", "Coste_total"]]
+                             .sort_values(["Proveedor", "Producto"]).reset_index(drop=True),
+                             "DetallePorProveedor"),
+        file_name="Compra_Detalle_Por_Proveedor.xlsx",
+    )
 
     c1, c2, c3 = st.columns(3)
     with c1:
