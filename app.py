@@ -188,17 +188,7 @@ if stock is not None:
         st.metric("Total de unidades a comprar", f"{total_units:,}")
     with c2:
         st.metric("Número de productos (SKU)", f"{sku_count}")
-
-    top = resumen_pos.sort_values("Total_a_comprar", ascending=False).head(20)
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.bar(top["Producto"], top["Total_a_comprar"])
-    ax.set_title("Compras totales por producto (Top 20) – hasta Máximo")
-    ax.set_xlabel("Producto")
-    ax.set_ylabel("Unidades a comprar")
-    ax.tick_params(axis="x", rotation=75)
-    fig.tight_layout()
-    st.pyplot(fig)
-
+    # (Gráfica Top 20 eliminada por petición)
     # Nueva gráfica: Unidades restantes (Stock vs Máximo)
     st.subheader("📊 Unidades restantes (Stock vs Máximo)")
     unidades = detalle.groupby("Producto", as_index=False).agg({"Stock": "sum", "Max": "sum", "Min": "sum"})
@@ -206,9 +196,9 @@ if stock is not None:
     unidades = unidades.sort_values("Stock")
 
     fig2, ax2 = plt.subplots(figsize=(10, max(6, len(unidades)*0.3)))
-    ax2.barh(unidades["Producto"], unidades["Stock"], color="skyblue", label="Stock actual")
-    ax2.barh(unidades["Producto"], unidades["Faltan"], left=unidades["Stock"], color="lightcoral", label="Faltan hasta Max")
-    ax2.scatter(unidades["Min"], range(len(unidades)), color="black", marker="D", label="Min")
+    ax2.barh(unidades["Producto"], unidades["Stock"], label="Stock actual")
+    ax2.barh(unidades["Producto"], unidades["Faltan"], left=unidades["Stock"], label="Faltan hasta Max")
+    ax2.scatter(unidades["Min"], range(len(unidades)), marker="D", label="Min")
     ax2.set_xlabel("Unidades")
     ax2.set_ylabel("Producto")
     ax2.set_title("Unidades restantes vs Máximo por producto")
