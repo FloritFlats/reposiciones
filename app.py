@@ -252,6 +252,17 @@ if stock is not None:
 
     st.dataframe(prov_tot, use_container_width=True)
 
+    # Detalle por proveedor: productos y cantidades
+    st.markdown("#### Detalle por proveedor")
+    for _, prow in prov_tot.iterrows():
+        _prov = str(prow["Proveedor"]) if "Proveedor" in prov_tot.columns else ""
+        sub = (rp[rp["Proveedor"] == _prov]
+                 [["Producto", "Total_a_comprar", "Coste_unitario", "Coste_total"]]
+                 .sort_values("Total_a_comprar", ascending=False)
+                 .reset_index(drop=True))
+        st.markdown(f"**{_prov}** — {int(prow['Unidades_total'])} uds · {int(prow['SKUs'])} SKUs · {float(prow['Coste_total']):,.2f} €")
+        st.dataframe(sub, use_container_width=True)
+
     # KPI de coste total estimado
     total_cost = float(prov_tot["Coste_total"].sum())
     st.metric("Coste total aproximado", f"{total_cost:,.2f} €")
